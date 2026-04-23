@@ -1471,13 +1471,17 @@ function startAudio() {
 }
 function stopAudio() {
   Object.keys(scanModNodes).forEach(function(k){
-    try { scanModNodes[k].stop(); } catch(e){}
+    try { scanModNodes[k].stop();       } catch(e){}
     try { scanModNodes[k].disconnect(); } catch(e){}
   });
   scanModNodes = {};
-  if (osc) { try { osc.stop(); } catch(e){} osc = null; }
-  if (ctx) { try { ctx.close(); } catch(e){} ctx = null; }
-  gainNode = null;
+  if (osc) { try { osc.stop(); } catch(e){} try { osc.disconnect(); } catch(e){} osc = null; }
+  if (gainNode) { try { gainNode.disconnect(); } catch(e){} gainNode = null; }
+  // Only close the context if we're not in an active scan
+  // — iOS needs the context to stay alive across scan steps
+  if (!scanActive && !scanPaused) {
+    if (ctx) { try { ctx.close(); } catch(e){} ctx = null; }
+  }
 }
 function togglePlay() {
   // Stop scan if running — manual play takes over
@@ -2152,11 +2156,18 @@ function startScan(resume) {
   scanActive = true; scanPaused = false;
   scanSV = (resume && scanLastSV >= scanFromSV && scanLastSV <= scanToSV)
     ? scanLastSV : scanFromSV;
-  // Resume modality index too if cycling
   autoModIdx = (resume && autoModCycle) ? scanLastModIdx : 0;
   if (autoModCycle) {
     scanMod = AUTO_MOD_SEQ[autoModIdx];
     syncAllModButtons();
+  }
+
+  // Create the AudioContext NOW while we're inside the user gesture handler.
+  // iOS requires this — creating it later in a setTimeout loses the gesture context.
+  if (!ctx || ctx.state === 'closed') {
+    ctx = makeCtx();
+  } else if (ctx.state === 'suspended') {
+    ctx.resume();
   }
 
   var ssb = document.getElementById('scan-start-btn');
@@ -2220,15 +2231,36 @@ function runScanStep() {
   if (pf) pf.style.width = pct.toFixed(1) + '%';
   if (pp) pp.textContent = Math.round(pct) + '%';
 
-  // Fully stop previous audio first, then start fresh after a brief gap.
-  // The gap lets the old AudioContext fully close before the new one opens —
-  // without it, ScriptProcessorNode (noise) can linger and mix with the new sound.
-  stopAudio();
-  setTimeout(function() {
-    if (!scanActive || scanPaused) return; // scan may have been stopped during the gap
+  // iOS fix: reuse the same AudioContext across steps — only disconnect/reconnect nodes.
+  // Recreating AudioContext on every step hits iOS limits and loses the gesture context.
+  if (!ctx || ctx.state === 'closed') {
+    // Create fresh context only if we don't have one
     ctx = makeCtx();
-    buildScanAudio(freq);
-  }, 80); // 80ms gap — imperceptible but enough for context teardown
+  } else if (ctx.state === 'suspended') {
+    ctx.resume();
+  }
+
+  // Disconnect and stop only the audio nodes, not the context
+  stopNodesOnly();
+  buildScanAudio(freq);
+}
+
+// Stop oscillators/noise nodes without closing the AudioContext
+function stopNodesOnly() {
+  Object.keys(scanModNodes).forEach(function(k){
+    try { scanModNodes[k].stop();       } catch(e){}
+    try { scanModNodes[k].disconnect(); } catch(e){}
+  });
+  scanModNodes = {};
+  if (osc) {
+    try { osc.stop();        } catch(e){}
+    try { osc.disconnect();  } catch(e){}
+    osc = null;
+  }
+  if (gainNode) {
+    try { gainNode.disconnect(); } catch(e){}
+    gainNode = null;
+  }
 }
 
 // ensureScanAudio — called during manual play when frequency changes via dial/slider
@@ -2252,7 +2284,9 @@ function stopScan() {
   scanLastModIdx = autoModIdx;
   scanActive = false; scanPaused = false;
   clearInterval(scanTimer); scanTimer = null;
-  stopAudio();
+  // Now safe to close context — stopAudio will close it since scanActive is false
+  stopNodesOnly();
+  if (ctx) { try { ctx.close(); } catch(e){} ctx = null; }
   var ssb = document.getElementById('scan-start-btn');
   var ssw = document.getElementById('scan-status-wrap');
   var spw = document.getElementById('scan-pause-wrap');
@@ -2868,6 +2902,21 @@ var ktfSl = document.getElementById('ktf-vol-sl');
 if (ktfSl) fillSl(ktfSl, 50);
 initTherapySliders();
 updateUI();
+
+// ── iOS scroll audio resume ─────────────────────────────────────
+// iOS Safari suspends AudioContext when the page scrolls.
+// Resume immediately on any scroll or touch move.
+function resumeCtxIfNeeded() {
+  if (ctx && ctx.state === 'suspended') {
+    ctx.resume();
+  }
+  if (bbCtx && bbCtx.state === 'suspended') {
+    bbCtx.resume();
+  }
+}
+document.addEventListener('scroll',    resumeCtxIfNeeded, { passive: true });
+document.addEventListener('touchmove', resumeCtxIfNeeded, { passive: true });
+document.addEventListener('touchstart', resumeCtxIfNeeded, { passive: true });
 
 // ── iOS/Android Audio Unlock ────────────────────────────────────
 // iOS Safari requires AudioContext.resume() inside a user gesture.
