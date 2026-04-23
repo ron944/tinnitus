@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<meta name="apple-mobile-web-app-title" content="Tinnitus Finder v2.0">
+<meta name="apple-mobile-web-app-title" content="Tinnitus Finder v2.1">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#eef1fb">
 <!-- Prevent iOS Safari zoom on input focus (inputs < 16px trigger zoom) -->
@@ -17,7 +17,7 @@
   #freq-manual { font-size: 32px !important; touch-action: manipulation; }
   input[type="range"] { touch-action: pan-x; -webkit-appearance: none; }
 </style>
-<title>Tinnitus Finder v2.0</title>
+<title>Tinnitus Finder v2.1</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
@@ -417,7 +417,7 @@ footer { font-size: 12px; font-weight: 500; color: #8890b8; text-align: center; 
 <body>
 
 <header>
-  <div class="logo">Tinnitus <span>Finder</span> <span style="font-size:11px;font-weight:600;color:#8890b8;letter-spacing:.05em">v2.0</span></div>
+  <div class="logo">Tinnitus <span>Finder</span> <span style="font-size:11px;font-weight:600;color:#8890b8;letter-spacing:.05em">v2.1</span></div>
   <button id="settings-btn" onclick="toggleSettings()">⚙</button>
 </header>
 
@@ -2897,6 +2897,9 @@ setAutoModCycle(true);
 
 setMode('raw');
 syncAllModButtons();
+// Explicitly set defaults — dwell 3s, volume 50%
+setScanSpeed(3, document.getElementById('spd-3'));
+syncKTFVol(50);
 fillSl('scan-vol-sl', 50);
 var ktfSl = document.getElementById('ktf-vol-sl');
 if (ktfSl) fillSl(ktfSl, 50);
